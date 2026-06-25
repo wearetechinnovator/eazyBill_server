@@ -16,16 +16,11 @@ const itemSettlementSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'item'
     },
-    purchaseBillId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'purchaseinvoice'
-    },
+    settlement: [],
     salesBillId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'salesinvoice'
-    },
-    settleQun: Number,
-    settleUnit: String
+    }
 }, { timestamps: true });
 
 module.exports = new mongoose.model("item_settlement", itemSettlementSchema);

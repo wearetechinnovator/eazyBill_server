@@ -8,6 +8,7 @@ const itemSchema = new mongoose.Schema({
   hsn: String,
   qun: String,
   selectedUnit: String,
+  settleInvoice: Array,
   unit: {
     type: Array
   },

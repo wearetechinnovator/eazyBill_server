@@ -8,10 +8,256 @@ const companyModel = require('../Company/company.model');
 const { updateLadger, addLadger } = require('../Ladger/ladger.controller');
 const partyModel = require('../Party/party.model');
 const itemSettlementModel = require("../Item/itemSattlement.model");
+const purchaseInvoiceModel = require("../Purchase/purchase.model");
 
 
 
 class SalesController {
+    static updatePurchaseItemRemining = async ({ items, userId, companyId, salesBillId }) => {
+        try {
+            const itemIds = [...new Set(items.map(i => String(i.itemId)))];
+            const settlementMap = {};
+
+            const allPurchaseInvoices = await purchaseInvoiceModel.find({
+                userId: new mongoose.Types.ObjectId(String(userId)),
+                companyId: new mongoose.Types.ObjectId(String(companyId)),
+                items: {
+                    $elemMatch: {
+                        itemId: { $in: itemIds },
+                        remainingQun: { $gt: 0 }
+                    }
+                }
+            });
+
+            for (const item of items) {
+                let reqQty = Number(item.qun);
+                const settlementInv = item.settleInvoice || [];
+                const itemSettlements = []; // this item er jonno
+
+                // |========================================|
+                // |====[USER SELECTED PURCHASE INVOICES]===|
+                // |========================================|
+                if (settlementInv.length > 0) {
+                    for (const invId of settlementInv) {
+                        if (reqQty <= 0) break;
+
+                        const invoice = allPurchaseInvoices.find(inv => String(inv._id) === String(invId));
+
+                        if (!invoice) continue;
+
+                        const purchaseItem = invoice.items.find(
+                            p => String(p.itemId) === String(item.itemId) && Number(p.remainingQun) > 0
+                        );
+
+                        if (!purchaseItem) continue;
+
+                        const remaining = Number(purchaseItem.remainingQun);
+
+                        const deductQty = Math.min(reqQty, remaining);
+                        const newRemaining = remaining - deductQty;
+
+                        const updateResult = await purchaseInvoiceModel.updateOne(
+                            {
+                                _id: invoice._id,
+                                userId: new mongoose.Types.ObjectId(
+                                    String(userId)
+                                ),
+                                companyId: new mongoose.Types.ObjectId(
+                                    String(companyId)
+                                ),
+                                "items.itemId": String(item.itemId)
+                            },
+                            {
+                                $set: {
+                                    "items.$.remainingQun": String(newRemaining)
+                                }
+                            }
+                        );
+
+                        if (updateResult.modifiedCount !== 1) {
+                            return {
+                                status: false,
+                                message: `Failed to update stock for ${item.itemName}`
+                            };
+                        }
+
+                        // Update memory copy
+                        purchaseItem.remainingQun = newRemaining;
+
+                        itemSettlements.push({
+                            purchaseBillId: invoice._id,
+                            settleQun: deductQty,
+                            unit: item.selectedUnit
+                        });
+
+                        reqQty -= deductQty;
+                    }
+
+                }
+
+                // |========================================|
+                // |===========[FIFO SETTLEMENT]============|
+                // |========================================|
+                else {
+                    // Jar itemId current itemId, and jar reminingQun besi 0 er theke;
+                    // Take sort kora holo invoiceDate hisebe.
+                    const fifoInvoices = allPurchaseInvoices
+                        .filter(inv =>
+                            inv.items.some(
+                                p => String(p.itemId) === String(item.itemId) && Number(p.remainingQun) > 0
+                            )
+                        ).sort((a, b) => new Date(a.invoiceDate) - new Date(b.invoiceDate));
+
+                    for (const invoice of fifoInvoices) {
+                        if (reqQty <= 0) break; // useless; tule dilo o osubidha nai
+
+                        const purchaseItem = invoice.items.find(p =>
+                            String(p.itemId) === String(item.itemId) &&
+                            Number(p.remainingQun) > 0
+                        );
+
+                        if (!purchaseItem) continue;
+
+                        const remaining = Number(purchaseItem.remainingQun);
+
+                        const deductQty = Math.min(reqQty, remaining);
+                        const newRemaining = remaining - deductQty;
+
+                        const updateResult = await purchaseInvoiceModel.updateOne(
+                            {
+                                _id: invoice._id,
+                                userId: new mongoose.Types.ObjectId(
+                                    String(userId)
+                                ),
+                                companyId: new mongoose.Types.ObjectId(
+                                    String(companyId)
+                                ),
+                                "items.itemId": String(item.itemId)
+                            },
+                            {
+                                $set: {
+                                    "items.$.remainingQun": String(newRemaining)
+                                }
+                            }
+                        );
+
+                        if (updateResult.modifiedCount !== 1) {
+                            return {
+                                status: false,
+                                message: `Failed to update stock for ${item.itemName}`
+                            };
+                        }
+
+                        // Update memory copy
+                        purchaseItem.remainingQun = newRemaining;
+
+                        itemSettlements.push({
+                            purchaseBillId: invoice._id,
+                            settleQun: deductQty,
+                            unit: item.selectedUnit
+                        });
+
+                        reqQty -= deductQty;
+
+                    }
+
+                }
+
+                settlementMap[String(item.itemId)] = itemSettlements;
+
+            }
+
+            await itemSettlementModel.insertMany(
+                items.map(i => ({
+                    userId,
+                    companyId,
+                    itemId: i.itemId,
+                    settlement: settlementMap[String(i.itemId)] || [],
+                    salesBillId
+                }))
+            );
+
+            return {
+                status: true,
+                message: "Purchase quantities settled successfully"
+            };
+        } catch (error) {
+            console.error(error);
+            return {
+                status: false,
+                message: error.message || "Failed to settle purchase quantities"
+            };
+        }
+    };
+
+    static updatePurchaseItemRemainingOnUpdate = async ({ newItems, userId, companyId, salesBillId }) => {
+        try {
+            // |========================================|
+            // |=======[STEP 1: RESTORE OLD QTY]========|
+            // |========================================|
+            const oldSettlements = await itemSettlementModel.find({
+                userId, companyId, salesBillId
+            });
+
+            for (const settlement of oldSettlements) {
+                for (const s of settlement.settlement) {
+                    const invoice = await purchaseInvoiceModel.findOne({
+                        _id: s.purchaseBillId,
+                        userId: new mongoose.Types.ObjectId(String(userId)),
+                        companyId: new mongoose.Types.ObjectId(String(companyId)),
+                    });
+
+                    if (!invoice) continue;
+
+                    const purchaseItem = invoice.items.find(
+                        p => String(p.itemId) === String(settlement.itemId)
+                    );
+
+                    if (!purchaseItem) continue;
+
+                    // ✅ String -> Number convert করে তারপর restore
+                    const currentRemaining = Number(purchaseItem.remainingQun);
+                    const restored = currentRemaining + Number(s.settleQun);
+
+                    await purchaseInvoiceModel.updateOne(
+                        {
+                            _id: s.purchaseBillId,
+                            userId: new mongoose.Types.ObjectId(String(userId)),
+                            companyId: new mongoose.Types.ObjectId(String(companyId)),
+                            "items.itemId": String(settlement.itemId)
+                        },
+                        {
+                            $set: { "items.$.remainingQun": String(restored) }
+                        }
+                    );
+                }
+            }
+
+            // Delete old settlements
+            await itemSettlementModel.deleteMany({ salesBillId, userId, companyId });
+
+            // |========================================|
+            // |=======[STEP 2: APPLY NEW QTY]==========|
+            // |========================================|
+            const result = await SalesController.updatePurchaseItemRemining({
+                items: newItems,
+                userId,
+                companyId,
+                salesBillId
+            });
+
+            return result;
+
+        } catch (error) {
+            console.error(error);
+            return {
+                status: false,
+                message: error.message || "Failed to update purchase quantities on edit"
+            };
+        }
+    };
+
+
     static async add(req, res) {
         const {
             token, party, salesInvoiceNumber, invoiceDate, DueDate, items, discountType,
@@ -55,6 +301,13 @@ class SalesController {
                     return res.status(500).json({ err: 'Invoice update failed', update: false })
                 }
 
+                const updatePurchaseRemainingItem = await SalesController.updatePurchaseItemRemainingOnUpdate({
+                    newItems: items,
+                    userId: getUserData._id,
+                    companyId: getUserData.activeCompany,
+                    salesBillId: id
+                });
+
 
                 await updateLadger({
                     partyId: party,
@@ -90,22 +343,18 @@ class SalesController {
                 return res.status(500).json({ err: 'Invoice creation failed' });
             }
 
-            let settleData = [];
-            for (let i of items) {
-                const sattleObj = {
-                    userId: getUserData._id,
-                    companyId: getUserData.activeCompany,
-                    itemId: i.ItemId,
-                    purchaseBillId: i.settleInvoice,
-                    salesBillId: insert._id,
-                    settleQun: i.qun,
-                    settleUnit: i.selectedUnit
-                }
+            // Update Purchase Item reminig QTY;
+            const updatePurchaseReminigItem = await SalesController.updatePurchaseItemRemining({
+                items: items,
+                userId: getUserData._id,
+                companyId: getUserData.activeCompany,
+                salesBillId: insert._id
+            })
 
-                settleData.push(sattleObj);
+            if (!updatePurchaseReminigItem.status) {
+                await salesInvoiceModel.deleteOne({ _id: insert._id });
+                return res.status(500).json({ err: updatePurchaseReminigItem.message });
             }
-
-            await itemSettlementModel.insertMany(settleData);
 
 
             await addLadger({
@@ -117,8 +366,11 @@ class SalesController {
                 debit: (finalAmount - (paymentAmount || 0)).toFixed(2)
             })
 
+
             return res.status(200).json(insert);
+
         } catch (err) {
+            console.log(err);
             return res.status(500).json({ err: 'Something went wrong' });
         }
 
@@ -428,7 +680,7 @@ class SalesController {
         const { token, id } = req.body;
 
         if (!token || !id) {
-            return res.status(500).json({ err: "fill the required fields" });
+            return res.status(400).json({ err: "fill the required fields" });
         }
 
         const getInfo = await getId(token);
@@ -438,11 +690,68 @@ class SalesController {
         }
 
         try {
-            const cancel = await salesInvoiceModel.updateOne({ _id: id, companyId: getUser.activeCompany }, {
-                $set: {
-                    isCancel: true
+            // ✅ Already cancelled check
+            const invoice = await salesInvoiceModel.findOne({ _id: id, companyId: getUser.activeCompany });
+            if (!invoice) {
+                return res.status(404).json({ err: "Invoice not found" });
+            }
+            if (invoice.isCancel) {
+                return res.status(400).json({ err: "Invoice already cancelled" });
+            }
+
+            // |========================================|
+            // |=======[RESTORE PURCHASE QTY]===========|
+            // |========================================|
+            const oldSettlements = await itemSettlementModel.find({
+                salesBillId: id,
+                userId: getUser._id,
+                companyId: getUser.activeCompany
+            });
+
+            for (const settlement of oldSettlements) {
+                for (const s of settlement.settlement) {
+                    const purchaseInvoice = await purchaseInvoiceModel.findOne({
+                        _id: s.purchaseBillId,
+                        userId: new mongoose.Types.ObjectId(String(getUser._id)),
+                        companyId: new mongoose.Types.ObjectId(String(getUser.activeCompany)),
+                    });
+
+                    if (!purchaseInvoice) continue;
+
+                    const purchaseItem = purchaseInvoice.items.find(
+                        p => String(p.itemId) === String(settlement.itemId)
+                    );
+
+                    if (!purchaseItem) continue;
+
+                    const restored = Number(purchaseItem.remainingQun) + Number(s.settleQun);
+
+                    await purchaseInvoiceModel.updateOne(
+                        {
+                            _id: s.purchaseBillId,
+                            userId: new mongoose.Types.ObjectId(String(getUser._id)),
+                            companyId: new mongoose.Types.ObjectId(String(getUser.activeCompany)),
+                            "items.itemId": String(settlement.itemId)
+                        },
+                        {
+                            $set: { "items.$.remainingQun": String(restored) }
+                        }
+                    );
                 }
-            })
+            }
+
+            // ✅ Settlement records delete
+            await itemSettlementModel.deleteMany({
+                salesBillId: id,
+                userId: getUser._id,
+                companyId: getUser.activeCompany
+            });
+
+            // ✅ Invoice cancel mark
+            const cancel = await salesInvoiceModel.updateOne(
+                { _id: id, companyId: getUser.activeCompany },
+                { $set: { isCancel: true } }
+            );
 
             if (cancel.modifiedCount === 0) {
                 return res.status(500).json({ err: "Invoice not cancelled" });

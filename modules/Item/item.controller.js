@@ -532,7 +532,8 @@ class ItemController {
     };
 
     static async getPurchaseInvoice(req, res) {
-        const { itemId } = req.body;
+        const { itemId, update } = req.body;
+        console.log(update);
         const userData = req.data; //from auth middleware;
 
         if (!itemId) {
@@ -542,11 +543,24 @@ class ItemController {
         try {
             const getUser = await userModel.findOne({ _id: userData._id });
 
+
+            /**
+             * If bill is open in edit mode,
+             * tokhon previous tag show kora te hobe,
+             * kintu jodi remining > 0 kore rakhi tahole jodi qun ses hoye jay taile edit mode
+             * kichu show hobe na. tai update mode a remainingQun check korar dorkar nai.
+             */
+            const itemMatch = { itemId: itemId }
+            if (!update)
+                itemMatch.remainingQun = { $gt: 0 };
+
             const invoice = await purchaseInvoiceModel.find({
                 userId: new mongoose.Types.ObjectId(String(userData._id)),
                 companyId: new mongoose.Types.ObjectId(getUser.activeCompany),
-                "items.itemId": itemId
-            })
+                items: {
+                    $elemMatch: itemMatch
+                }
+            });
 
             return res.status(200).json(invoice);
 
