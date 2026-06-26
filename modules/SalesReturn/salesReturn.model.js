@@ -41,6 +41,7 @@ const salesReturnSchema = new mongoose.Schema({
   },
   salesReturnNumber: String,
   returnDate: Date,
+  salesInvoice: String,
   items: [itemSchema],
   discountType: String,
   discountAmount: Number,

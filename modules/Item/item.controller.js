@@ -531,10 +531,10 @@ class ItemController {
         }
     };
 
+
     static async getPurchaseInvoice(req, res) {
         const { itemId, update } = req.body;
-        console.log(update);
-        const userData = req.data; //from auth middleware;
+        const userData = req.data;
 
         if (!itemId) {
             return res.status(401).json({ err: 'require token and item id' });
@@ -543,28 +543,59 @@ class ItemController {
         try {
             const getUser = await userModel.findOne({ _id: userData._id });
 
-
             /**
-             * If bill is open in edit mode,
-             * tokhon previous tag show kora te hobe,
-             * kintu jodi remining > 0 kore rakhi tahole jodi qun ses hoye jay taile edit mode
-             * kichu show hobe na. tai update mode a remainingQun check korar dorkar nai.
-             */
-            const itemMatch = { itemId: itemId }
-            if (!update)
-                itemMatch.remainingQun = { $gt: 0 };
+            * If bill is open in edit mode,
+            * tokhon previous tag show kora te hobe,
+            * kintu jodi remining > 0 kore rakhi tahole jodi qun ses hoye jay taile edit mode
+            * kichu show hobe na. tai update mode a remainingQun check korar dorkar nai.
+            */
+            const remainingCondition = update
+                ? {}
+                : { $gt: [{ $toDouble: "$$item.remainingQun" }, 0] };
 
-            const invoice = await purchaseInvoiceModel.find({
-                userId: new mongoose.Types.ObjectId(String(userData._id)),
-                companyId: new mongoose.Types.ObjectId(getUser.activeCompany),
-                items: {
-                    $elemMatch: itemMatch
+            const invoice = await purchaseInvoiceModel.aggregate([
+                {
+                    $match: {
+                        userId: new mongoose.Types.ObjectId(String(userData._id)),
+                        companyId: new mongoose.Types.ObjectId(String(getUser.activeCompany)),
+                        "items.itemId": itemId
+                    }
+                },
+                {
+                    $addFields: {
+                        items: {
+                            $filter: {
+                                input: "$items",
+                                as: "item",
+                                cond: {
+                                    $and: [
+                                        { $eq: ["$$item.itemId", itemId] },
+                                        ...(update ? [] : [
+                                            // ✅ String compare — "0" se bada
+                                            {
+                                                $gt: [
+                                                    { $toDouble: { $ifNull: ["$$item.remainingQun", "0"] } },
+                                                    0
+                                                ]
+                                            }
+                                        ])
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    $match: {
+                        "items.0": { $exists: true }
+                    }
                 }
-            });
+            ]);
 
             return res.status(200).json(invoice);
 
         } catch (error) {
+            console.error(error);
             return res.status(500).json({ err: "Something went wrong" });
         }
     }

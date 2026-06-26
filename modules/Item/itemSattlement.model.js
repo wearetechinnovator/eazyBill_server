@@ -20,7 +20,12 @@ const itemSettlementSchema = new mongoose.Schema({
     salesBillId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'salesinvoice'
-    }
+    },
+    returnBillId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "salesreturn",
+        default: null
+    },
 }, { timestamps: true });
 
 module.exports = new mongoose.model("item_settlement", itemSettlementSchema);
