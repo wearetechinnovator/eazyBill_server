@@ -68,6 +68,15 @@ class ReportController {
         }
 
     }
+
+    static async getItemWiseSales(req, res) {
+
+    }
+
+    static async getItemWisePurchase(req, res) {
+
+    }
+
 }
 
 module.exports = ReportController;

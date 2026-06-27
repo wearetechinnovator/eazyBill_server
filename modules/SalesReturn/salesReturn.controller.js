@@ -9,12 +9,12 @@ const { updateLadger, addLadger } = require('../Ladger/ladger.controller');
 const partyModel = require('../Party/party.model');
 const itemSettlementModel = require("../Item/itemSattlement.model");
 const purchaseInvoiceModel = require("../Purchase/purchase.model");
+const { convertUnitToBase, displayQty } = require("../../helper/unitConversion")
 
 
 class SalesReturnController {
     static restorePurchaseItemOnReturn = async ({ items, userId, companyId, salesInvoiceId, salesReturnBillId }) => {
         try {
-            // Original sale settlements — returnBillId null matlab sale record
             const originalSettlements = await itemSettlementModel.find({
                 salesBillId: new mongoose.Types.ObjectId(String(salesInvoiceId)),
                 returnBillId: null,
@@ -26,7 +26,6 @@ class SalesReturnController {
                 return { status: false, message: "No settlements found for this sales invoice" };
             }
 
-            // Is sale ke existing return settlements — kitna already return ho chuka
             const existingReturns = await itemSettlementModel.find({
                 salesBillId: new mongoose.Types.ObjectId(String(salesInvoiceId)),
                 returnBillId: { $ne: null },
@@ -37,7 +36,13 @@ class SalesReturnController {
             const returnSettlementMap = {};
 
             for (const item of items) {
-                let returnQty = Number(item.qun);
+                const converted = await convertUnitToBase({
+                    itemId: item.itemId,
+                    qun: item.qun,
+                    selectedUnit: item.selectedUnit
+                });
+
+                let returnQty = Number(converted.quantity);
                 const itemIdStr = String(item.itemId);
 
                 const itemSettlement = originalSettlements.find(
@@ -45,24 +50,24 @@ class SalesReturnController {
                 );
                 if (!itemSettlement) continue;
 
-                // Per purchase bill kitna already return ho chuka
+                // ← key: purchaseBillId_selectedUnit (same bill same item multiple rows)
                 const alreadyReturnedMap = {};
                 for (const ret of existingReturns) {
                     if (String(ret.itemId) !== itemIdStr) continue;
                     for (const s of ret.settlement) {
-                        const key = String(s.purchaseBillId);
+                        const key = `${String(s.purchaseBillId)}_${s.selectedUnit}`;
                         alreadyReturnedMap[key] = (alreadyReturnedMap[key] || 0) + Number(s.settleQun);
                     }
                 }
 
-                // LIFO order
                 const lifoSettlements = [...itemSettlement.settlement].reverse();
                 const itemReturnSettlements = [];
 
                 for (const s of lifoSettlements) {
                     if (returnQty <= 0) break;
 
-                    const alreadyReturned = alreadyReturnedMap[String(s.purchaseBillId)] || 0;
+                    const key = `${String(s.purchaseBillId)}_${s.selectedUnit}`;
+                    const alreadyReturned = alreadyReturnedMap[key] || 0;
                     const maxRestorable = Number(s.settleQun) - alreadyReturned;
                     if (maxRestorable <= 0) continue;
 
@@ -73,8 +78,10 @@ class SalesReturnController {
                     });
                     if (!purchaseInvoice) continue;
 
+                    // ← selectedUnit se exact row
                     const purchaseItem = purchaseInvoice.items.find(
                         p => String(p.itemId) === itemIdStr
+                            && p.selectedUnit === s.selectedUnit
                     );
                     if (!purchaseItem) continue;
 
@@ -86,9 +93,14 @@ class SalesReturnController {
                             _id: s.purchaseBillId,
                             userId: new mongoose.Types.ObjectId(String(userId)),
                             companyId: new mongoose.Types.ObjectId(String(companyId)),
-                            "items.itemId": itemIdStr
                         },
-                        { $set: { "items.$.remainingQun": String(newRemaining) } }
+                        { $set: { "items.$[elem].remainingQun": String(newRemaining) } },
+                        {
+                            arrayFilters: [{
+                                "elem.itemId": itemIdStr,
+                                "elem.selectedUnit": s.selectedUnit  // ← exact row
+                            }]
+                        }
                     );
 
                     if (updateResult.modifiedCount !== 1) {
@@ -98,7 +110,8 @@ class SalesReturnController {
                     itemReturnSettlements.push({
                         purchaseBillId: s.purchaseBillId,
                         settleQun: restoreQty,
-                        unit: item.selectedUnit
+                        unit: converted.unit,
+                        selectedUnit: s.selectedUnit  // ← save karo
                     });
 
                     returnQty -= restoreQty;
@@ -107,7 +120,6 @@ class SalesReturnController {
                 returnSettlementMap[itemIdStr] = itemReturnSettlements;
             }
 
-            // salesBillId = original sale id, returnBillId = return bill id
             await itemSettlementModel.insertMany(
                 items.map(i => ({
                     userId,
@@ -127,10 +139,8 @@ class SalesReturnController {
         }
     };
 
-    // salesInvoiceId frontend se doge — update/delete dono me
     static reverseReturnSettlement = async ({ salesInvoiceId, salesReturnBillId, userId, companyId }) => {
         try {
-            // salesBillId + returnBillId dono se exact records dhundo
             const returnSettlements = await itemSettlementModel.find({
                 salesBillId: new mongoose.Types.ObjectId(String(salesInvoiceId)),
                 returnBillId: new mongoose.Types.ObjectId(String(salesReturnBillId)),
@@ -151,12 +161,13 @@ class SalesReturnController {
                     });
                     if (!purchaseInvoice) continue;
 
+                    // ← selectedUnit se exact row
                     const purchaseItem = purchaseInvoice.items.find(
                         p => String(p.itemId) === String(settlement.itemId)
+                            && p.selectedUnit === s.selectedUnit
                     );
                     if (!purchaseItem) continue;
 
-                    // Jo restore hua tha woh wapas deduct karo
                     const newRemaining = Number(purchaseItem.remainingQun) - Number(s.settleQun);
 
                     await purchaseInvoiceModel.updateOne(
@@ -164,13 +175,17 @@ class SalesReturnController {
                             _id: s.purchaseBillId,
                             userId: new mongoose.Types.ObjectId(String(userId)),
                             companyId: new mongoose.Types.ObjectId(String(companyId)),
-                            "items.itemId": String(settlement.itemId)
                         },
-                        { $set: { "items.$.remainingQun": String(newRemaining) } }
+                        { $set: { "items.$[elem].remainingQun": String(newRemaining) } },
+                        {
+                            arrayFilters: [{
+                                "elem.itemId": String(settlement.itemId),
+                                "elem.selectedUnit": s.selectedUnit  // ← exact row
+                            }]
+                        }
                     );
                 }
 
-                // Record delete karo
                 await itemSettlementModel.deleteOne({ _id: settlement._id });
             }
 
@@ -183,7 +198,7 @@ class SalesReturnController {
     };
 
 
-    // Create and Save a new Quotation;
+    // Create Sales Return;
     static async add(req, res) {
         const {
             token, party, salesReturnNumber, returnDate, items, discountType, discountAmount, discountPercentage,

@@ -9,6 +9,7 @@ const { updateLadger, addLadger } = require('../Ladger/ladger.controller');
 const partyModel = require('../Party/party.model');
 const itemSettlementModel = require("../Item/itemSattlement.model");
 const purchaseInvoiceModel = require("../Purchase/purchase.model");
+const { convertUnitToBase, displayQty } = require("../../helper/unitConversion")
 
 
 
@@ -30,9 +31,14 @@ class SalesController {
             });
 
             for (const item of items) {
-                let reqQty = Number(item.qun);
+                let converted = await convertUnitToBase({
+                    itemId: item.itemId,
+                    qun: item.qun,
+                    selectedUnit: item.selectedUnit
+                });
+                let reqQty = Number(converted.quantity);
                 const settlementInv = item.settleInvoice || [];
-                const itemSettlements = []; // this item er jonno
+                const itemSettlements = [];
 
                 // |========================================|
                 // |====[USER SELECTED PURCHASE INVOICES]===|
@@ -42,65 +48,53 @@ class SalesController {
                         if (reqQty <= 0) break;
 
                         const invoice = allPurchaseInvoices.find(inv => String(inv._id) === String(invId));
-
                         if (!invoice) continue;
 
                         const purchaseItem = invoice.items.find(
                             p => String(p.itemId) === String(item.itemId) && Number(p.remainingQun) > 0
                         );
-
                         if (!purchaseItem) continue;
 
                         const remaining = Number(purchaseItem.remainingQun);
-
                         const deductQty = Math.min(reqQty, remaining);
                         const newRemaining = remaining - deductQty;
 
                         const updateResult = await purchaseInvoiceModel.updateOne(
                             {
                                 _id: invoice._id,
-                                userId: new mongoose.Types.ObjectId(
-                                    String(userId)
-                                ),
-                                companyId: new mongoose.Types.ObjectId(
-                                    String(companyId)
-                                ),
-                                "items.itemId": String(item.itemId)
+                                userId: new mongoose.Types.ObjectId(String(userId)),
+                                companyId: new mongoose.Types.ObjectId(String(companyId)),
                             },
+                            { $set: { "items.$[elem].remainingQun": String(newRemaining) } },
                             {
-                                $set: {
-                                    "items.$.remainingQun": String(newRemaining)
-                                }
+                                arrayFilters: [{
+                                    "elem.itemId": String(item.itemId),
+                                    "elem.selectedUnit": purchaseItem.selectedUnit  // ← purchase row ka selectedUnit
+                                }]
                             }
                         );
 
                         if (updateResult.modifiedCount !== 1) {
-                            return {
-                                status: false,
-                                message: `Failed to update stock for ${item.itemName}`
-                            };
+                            return { status: false, message: `Failed to update stock for ${item.itemName}` };
                         }
 
-                        // Update memory copy
                         purchaseItem.remainingQun = newRemaining;
 
                         itemSettlements.push({
                             purchaseBillId: invoice._id,
                             settleQun: deductQty,
-                            unit: item.selectedUnit
+                            unit: converted.unit,
+                            selectedUnit: purchaseItem.selectedUnit  // ← purchase row ka selectedUnit
                         });
 
                         reqQty -= deductQty;
                     }
-
                 }
 
                 // |========================================|
                 // |===========[FIFO SETTLEMENT]============|
                 // |========================================|
                 else {
-                    // Jar itemId current itemId, and jar reminingQun besi 0 er theke;
-                    // Take sort kora holo invoiceDate hisebe.
                     const fifoInvoices = allPurchaseInvoices
                         .filter(inv =>
                             inv.items.some(
@@ -109,62 +103,51 @@ class SalesController {
                         ).sort((a, b) => new Date(a.invoiceDate) - new Date(b.invoiceDate));
 
                     for (const invoice of fifoInvoices) {
-                        if (reqQty <= 0) break; // useless; tule dilo o osubidha nai
+                        if (reqQty <= 0) break;
 
                         const purchaseItem = invoice.items.find(p =>
                             String(p.itemId) === String(item.itemId) &&
                             Number(p.remainingQun) > 0
                         );
-
                         if (!purchaseItem) continue;
 
                         const remaining = Number(purchaseItem.remainingQun);
-
                         const deductQty = Math.min(reqQty, remaining);
                         const newRemaining = remaining - deductQty;
 
                         const updateResult = await purchaseInvoiceModel.updateOne(
                             {
                                 _id: invoice._id,
-                                userId: new mongoose.Types.ObjectId(
-                                    String(userId)
-                                ),
-                                companyId: new mongoose.Types.ObjectId(
-                                    String(companyId)
-                                ),
-                                "items.itemId": String(item.itemId)
+                                userId: new mongoose.Types.ObjectId(String(userId)),
+                                companyId: new mongoose.Types.ObjectId(String(companyId)),
                             },
+                            { $set: { "items.$[elem].remainingQun": String(newRemaining) } },
                             {
-                                $set: {
-                                    "items.$.remainingQun": String(newRemaining)
-                                }
+                                arrayFilters: [{
+                                    "elem.itemId": String(item.itemId),
+                                    "elem.selectedUnit": purchaseItem.selectedUnit  // ← purchase row ka selectedUnit
+                                }]
                             }
                         );
 
                         if (updateResult.modifiedCount !== 1) {
-                            return {
-                                status: false,
-                                message: `Failed to update stock for ${item.itemName}`
-                            };
+                            return { status: false, message: `Failed to update stock for ${item.itemName}` };
                         }
 
-                        // Update memory copy
                         purchaseItem.remainingQun = newRemaining;
 
                         itemSettlements.push({
                             purchaseBillId: invoice._id,
                             settleQun: deductQty,
-                            unit: item.selectedUnit
+                            unit: converted.unit,
+                            selectedUnit: purchaseItem.selectedUnit  // ← purchase row ka selectedUnit
                         });
 
                         reqQty -= deductQty;
-
                     }
-
                 }
 
                 settlementMap[String(item.itemId)] = itemSettlements;
-
             }
 
             await itemSettlementModel.insertMany(
@@ -177,16 +160,11 @@ class SalesController {
                 }))
             );
 
-            return {
-                status: true,
-                message: "Purchase quantities settled successfully"
-            };
+            return { status: true, message: "Purchase quantities settled successfully" };
+
         } catch (error) {
             console.error(error);
-            return {
-                status: false,
-                message: error.message || "Failed to settle purchase quantities"
-            };
+            return { status: false, message: error.message || "Failed to settle purchase quantities" };
         }
     };
 
@@ -206,34 +184,33 @@ class SalesController {
                         userId: new mongoose.Types.ObjectId(String(userId)),
                         companyId: new mongoose.Types.ObjectId(String(companyId)),
                     });
-
                     if (!invoice) continue;
 
                     const purchaseItem = invoice.items.find(
                         p => String(p.itemId) === String(settlement.itemId)
+                            && p.selectedUnit === s.selectedUnit  // ← purchase row ka selectedUnit
                     );
-
                     if (!purchaseItem) continue;
 
-                    // ✅ String -> Number convert করে তারপর restore
-                    const currentRemaining = Number(purchaseItem.remainingQun);
-                    const restored = currentRemaining + Number(s.settleQun);
+                    const restored = Number(purchaseItem.remainingQun) + Number(s.settleQun);
 
                     await purchaseInvoiceModel.updateOne(
                         {
                             _id: s.purchaseBillId,
                             userId: new mongoose.Types.ObjectId(String(userId)),
                             companyId: new mongoose.Types.ObjectId(String(companyId)),
-                            "items.itemId": String(settlement.itemId)
                         },
+                        { $set: { "items.$[elem].remainingQun": String(restored) } },
                         {
-                            $set: { "items.$.remainingQun": String(restored) }
+                            arrayFilters: [{
+                                "elem.itemId": String(settlement.itemId),
+                                "elem.selectedUnit": s.selectedUnit  // ← purchase row ka selectedUnit
+                            }]
                         }
                     );
                 }
             }
 
-            // Delete old settlements
             await itemSettlementModel.deleteMany({ salesBillId, userId, companyId });
 
             // |========================================|
@@ -250,13 +227,9 @@ class SalesController {
 
         } catch (error) {
             console.error(error);
-            return {
-                status: false,
-                message: error.message || "Failed to update purchase quantities on edit"
-            };
+            return { status: false, message: error.message || "Failed to update purchase quantities on edit" };
         }
     };
-
 
     static async add(req, res) {
         const {
@@ -690,7 +663,7 @@ class SalesController {
         }
 
         try {
-            // ✅ Already cancelled check
+            // Already cancelled check
             const invoice = await salesInvoiceModel.findOne({ _id: id, companyId: getUser.activeCompany });
             if (!invoice) {
                 return res.status(404).json({ err: "Invoice not found" });
@@ -720,6 +693,7 @@ class SalesController {
 
                     const purchaseItem = purchaseInvoice.items.find(
                         p => String(p.itemId) === String(settlement.itemId)
+                            && p.selectedUnit === s.selectedUnit  // ← fix
                     );
 
                     if (!purchaseItem) continue;
@@ -731,23 +705,25 @@ class SalesController {
                             _id: s.purchaseBillId,
                             userId: new mongoose.Types.ObjectId(String(getUser._id)),
                             companyId: new mongoose.Types.ObjectId(String(getUser.activeCompany)),
-                            "items.itemId": String(settlement.itemId)
                         },
+                        { $set: { "items.$[elem].remainingQun": String(restored) } },
                         {
-                            $set: { "items.$.remainingQun": String(restored) }
+                            arrayFilters: [{
+                                "elem.itemId": String(settlement.itemId),
+                                "elem.selectedUnit": s.selectedUnit  // ← fix
+                            }]
                         }
                     );
                 }
             }
 
-            // ✅ Settlement records delete
             await itemSettlementModel.deleteMany({
                 salesBillId: id,
                 userId: getUser._id,
                 companyId: getUser.activeCompany
             });
 
-            // ✅ Invoice cancel mark
+            // Invoice cancel mark
             const cancel = await salesInvoiceModel.updateOne(
                 { _id: id, companyId: getUser.activeCompany },
                 { $set: { isCancel: true } }

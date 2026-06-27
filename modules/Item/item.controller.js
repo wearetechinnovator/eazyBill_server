@@ -125,7 +125,7 @@ class ItemController {
         const { token, id, all, search, searchText, barCode } = req.body;
         const { page = 1, limit = 10 } = req.query;
 
-        const skip = (parseInt(page) - 1) * parseInt(limit);
+        const skip = (Number(page) - 1) * Number(limit);
 
         if (!token) {
             return res.status(500).json({
@@ -257,9 +257,7 @@ class ItemController {
             // FORCE ARRAY
             // =========================================================
 
-            const items = Array.isArray(getData)
-                ? getData
-                : [getData];
+            const items = Array.isArray(getData) ? getData : [getData];
 
             // =========================================================
             // STOCK CALCULATION

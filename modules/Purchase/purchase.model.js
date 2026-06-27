@@ -8,6 +8,7 @@ const itemSchema = new mongoose.Schema({
   hsn: String,
   qun: String,
   remainingQun: String,
+  baseUnit: String,
   selectedUnit: String,
   unit: Array,
   price: Number,
