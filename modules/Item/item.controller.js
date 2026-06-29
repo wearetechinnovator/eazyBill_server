@@ -9,6 +9,7 @@ const purchaseInvoiceModel = require("../Purchase/purchase.model");
 const purchaseReturModel = require("../PurchaseReturn/purchaseReturn.model");
 const salesinvoiceModel = require("../Sales/sales.model");
 const salesReturnModel = require("../SalesReturn/salesReturn.model");
+const ItemService = require("./item.service");
 
 
 class ItemController {
@@ -17,27 +18,37 @@ class ItemController {
         const { token, title, type, salePrice, category, details, update, id, unit, stock, hsn,
             purchasePrice, purchaseTaxType, saleTaxType, tax, itemCode
         } = req.body;
+        const userData = req.data;
 
         if ([token, title, salePrice,].some(field => !field || field === "")) {
             return res.json({ err: 'require fields are empty', create: false });
         }
 
-        if (!unit.length || unit.some(u => !u.unit || !u.conversion)) {
-            return res.status(500).json({ err: 'Unit is required', create: false });
-        }
 
 
         try {
-            const getInfo = await getId(token);
-            const getUserData = await userModel.findOne({ _id: getInfo._id });
-
-            const isExist = await itemModel.findOne({ title, companyId: getUserData.activeCompany, isDel: false });
+            const isExist = await itemModel.findOne({
+                title: { $regex: `^${title}$`, $options: 'i' },
+                companyId: userData.activeCompany,
+                isDel: false
+            });
             if (isExist && !update) {
                 return res.status(500).json({ err: 'Item alredy exist', create: false, isDel: false })
             }
 
             // update code.....
             if (update && id) {
+                // Check unit Editable or not;
+                const canEditUnit = await ItemService.isUnitEdit({
+                    itemId: id,
+                    userId: userData._id,
+                    activeCompany: userData.activeCompany
+                })
+
+                if (!canEditUnit && unit.length > 0) {
+                    return res.status(400).json({ err: "You can't edit unit" });
+                }
+
                 const update = await itemModel.updateOne({ _id: id }, {
                     $set: {
                         title, type, salePrice, category: category || null, details, unit, hsn,
@@ -52,6 +63,11 @@ class ItemController {
                 return res.status(200).json(update)
 
             } // Update close here;
+
+
+            if (!unit.length || unit.some(u => !u.unit || !u.conversion)) {
+                return res.status(500).json({ err: 'Unit is required', create: false });
+            }
 
 
             let openingStock = [];
@@ -98,9 +114,8 @@ class ItemController {
             }
 
 
-
             const insert = await itemModel.create({
-                userId: getUserData._id, companyId: getUserData.activeCompany, hsn,
+                userId: userData._id, companyId: userData.activeCompany, hsn,
                 purchasePrice, purchaseTaxType, saleTaxType,
                 title, type, salePrice, category: category || null, details, unit,
                 stock: openingStock, alert: stockAlert, tax, itemCode,
@@ -529,7 +544,6 @@ class ItemController {
         }
     };
 
-
     static async getPurchaseInvoice(req, res) {
         const { itemId, update } = req.body;
         const userData = req.data;
@@ -595,6 +609,28 @@ class ItemController {
         } catch (error) {
             console.error(error);
             return res.status(500).json({ err: "Something went wrong" });
+        }
+    }
+
+    static async isUnitEdit(req, res) {
+        try {
+            const { itemId } = req.body;
+            const userData = req.data; // from Auth Middleware
+
+            if (!itemId) {
+                return res.status(400).json({ err: "Please provide itemId" });
+            }
+
+            const edit = await ItemService.isUnitEdit({
+                itemId,
+                userId: userData._id,
+                activeCompany: userData.activeCompany
+            })
+
+            return res.status(200).json({ edit });
+
+        } catch (error) {
+            return res.status(403).json({ err: err.message });
         }
     }
 }

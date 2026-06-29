@@ -19,5 +19,8 @@ router
     .route("/get-purchase-invoice")
     .post(authMiddleware, ItemController.getPurchaseInvoice);
 
+router
+    .route("/is-unit-edit")
+    .post(authMiddleware, ItemController.isUnitEdit);
 
 module.exports = router;

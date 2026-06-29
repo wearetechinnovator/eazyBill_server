@@ -110,7 +110,11 @@ class AuthController {
 
 
             // Create token    
-            const token = jwt.sign(JSON.stringify(user), jwt_key)
+            const token = jwt.sign(JSON.stringify({
+                activeCompany: user.activeCompany,
+                email: user.email,
+                _id: user._id,
+            }), jwt_key)
             return res.status(200).json({ token: token, login: true });
 
         } catch (error) {
