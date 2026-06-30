@@ -8,6 +8,10 @@ router
     .post(authMiddleware, ItemController.add);
 
 router
+    .route("/bulk-add")
+    .post(authMiddleware, ItemController.bulkAdd);
+
+router
     .route("/get")
     .post(authMiddleware, ItemController.get);
 

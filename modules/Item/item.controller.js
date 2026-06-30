@@ -10,6 +10,9 @@ const purchaseReturModel = require("../PurchaseReturn/purchaseReturn.model");
 const salesinvoiceModel = require("../Sales/sales.model");
 const salesReturnModel = require("../SalesReturn/salesReturn.model");
 const ItemService = require("./item.service");
+const taxModel = require('../Tax/tax.model');
+const itemCategoryModel = require("../ItemCategory/itemCategory.model");
+
 
 
 class ItemController {
@@ -20,7 +23,7 @@ class ItemController {
         } = req.body;
         const userData = req.data;
 
-        if ([token, title, salePrice,].some(field => !field || field === "")) {
+        if ([token, title].some(field => !field || field === "")) {
             return res.json({ err: 'require fields are empty', create: false });
         }
 
@@ -130,8 +133,121 @@ class ItemController {
             return res.status(200).json(insert);
 
         } catch (error) {
-            console.log(error)
             return res.status(500).json({ 'err': 'Something went wrong', create: false });
+        }
+    }
+
+    // Bulk Add Data
+    static async bulkAdd(req, res) {
+        const { itemArr } = req.body;
+        const userData = req.data; //from Auth middleware;
+
+
+        if (!itemArr || itemArr.length < 1) {
+            return res.status(401).json({ err: "Please provide item list" });
+        }
+
+        try {
+            console.log(itemArr);
+
+            const VALID_FIELDS = [
+                'Item Name', 'Item Type', 'Category', 'Sale Price', 'Sale Tax Type', 'Purchase Price',
+                'Purchase Tax Type', 'GST Tax (%)', 'HSN/SAC', 'Unit', 'Opening Stock'
+            ];
+
+            // Fields Validation
+            for (const item of itemArr) {
+                const fields = Object.keys(item);
+
+                // 
+                const missingFields = VALID_FIELDS.filter((vf) => !fields.includes(vf));
+                if (missingFields.length > 0) {
+                    return res.status(400).json({ err: `Missing fields: ${missingFields.join(', ')}` });
+                }
+
+                const extraFields = fields.filter((f) => !VALID_FIELDS.includes(f));
+                if (extraFields.length > 0) {
+                    return res.status(400).json({ err: `Invalid fields: ${extraFields.join(', ')}` });
+                }
+            }
+
+            // Duplicate item name check (within sheet itself)
+            const itemNames = itemArr.map(i => i['Item Name'].trim());
+
+            const duplicateInSheet = itemNames.filter((name, idx) => itemNames.indexOf(name) !== idx);
+            if (duplicateInSheet.length > 0) {
+                return res.status(400).json({ err: `Duplicate item names in sheet: ${[...new Set(duplicateInSheet)].join(', ')}` });
+            }
+
+            // Check existing items in DB
+            const existingItems = await itemModel.find({
+                title: { $in: itemNames.map(name => new RegExp(`^${name}$`, 'i')) },
+                userId: userData._id,
+                companyId: userData.activeCompany,
+                isDel: false
+            }).select('title');
+
+            if (existingItems.length > 0) {
+                return res.status(409).json({
+                    err: `Item already exist: ${existingItems.map(i => i.title).join(', ')}`
+                });
+            }
+
+            // Get All Tax
+            const allTax = await taxModel.find({
+                userId: userData._id,
+                companyId: userData.activeCompany,
+                isDel: false
+            })
+
+            // Get all Item category;
+            const allItemCategory = await itemCategoryModel.find({
+                userId: userData._id,
+                companyId: userData.activeCompany,
+                isDel: false
+            })
+
+            // Create data set accroding to schema fields;
+            const dataSet = itemArr.map((i, _) => {
+                const obj = {};
+
+                const itemTaxData = allTax.find(t => t.gst === i['GST Tax (%)'].toString());
+                const itemCategoryData = allItemCategory.find(c => c.title === i['Category']);
+
+                obj.userId = userData._id;
+                obj.companyId = userData.activeCompany;
+                obj.title = i['Item Name'];
+                obj.type = i['Item Type'].toLowerCase();
+                obj.hsn = i['HSN/SAC'].toString();
+                obj.tax = itemTaxData._id.toString();
+                obj.salePrice = i['Sale Price'].toString();
+                obj.saleTaxType = i['Sale Tax Type']?.toString().trim().toLowerCase() === 'with tax'
+                    ? '1' : i['Sale Tax Type']?.toString().trim().toLowerCase() === 'without tax'
+                        ? '0' : '1';
+                obj.purchasePrice = i['Purchase Price'].toString();
+                obj.purchaseTaxType = i['Purchase Tax Type']?.toString().trim().toLowerCase() === 'with tax'
+                    ? '1' : i['Purchase Tax Type']?.toString().trim().toLowerCase() === 'without tax'
+                        ? '0' : '1';
+                obj.itemCode = "";
+                obj.barcodeImage = "";
+                obj.category = itemCategoryData?._id || null;
+                obj.unit = [{ unit: i['Unit'], conversion: '1', opening: i['Opening Stock'].toString(), alert: '' }];
+                obj.stock = [{ unit: i['Unit'], stock: i['Opening Stock'].toString() }];
+                obj.alert = [{ unit: i['Unit'], alert: '' }]
+
+                return obj;
+            })
+
+            const insertBulk = await itemModel.insertMany(dataSet);
+            if (!insertBulk) {
+                return res.status(500).json({ err: "Intem insertion failed!" })
+            }
+
+            return res.status(200).json({ msg: "Item insert successfully" });
+
+        } catch (err) {
+            console.log(err);
+            return res.status(500).json({ err: "Something went wrong" })
         }
     }
 

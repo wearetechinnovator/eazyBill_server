@@ -22,12 +22,14 @@ const itemSchema = new mongoose.Schema({
   salePrice: String,
   saleTaxType: {
     type: String,
-    enum: ["0", "1"] //0=`Without Tax` | 1=`With Tax`
+    enum: ["0", "1"], //0=`Without Tax` | 1=`With Tax`
+    default: '1'
   },
   purchasePrice: String,
   purchaseTaxType: {
     type: String,
-    enum: ["0", "1"] //0=`Without Tax` | 1=`With Tax`
+    enum: ["0", "1"], //0=`Without Tax` | 1=`With Tax`
+    default: '1'
   },
   itemCode: String, // Item Barcode Number;
   barcodeImage: String, // Path to the barcode image
