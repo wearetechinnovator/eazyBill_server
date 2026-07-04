@@ -3,7 +3,7 @@ const app = require("./app");
 const mongoose = require("mongoose");
 const attendanceReminder = require("./jobs/staffAttendanceReminder");
 const staffAttendancePresent = require("./jobs/staffAttandancePresent");
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 8081;
 
 
 
@@ -13,7 +13,7 @@ mongoose.connect(process.env.MONGO_URI).then(() => {
 	//attendanceReminder(); //Staff Attendance Reminder Mail;
 	//staffAttendancePresent(); // Default Present Attendance;
 
-	app.listen(PORT || 8080, () => {
+	app.listen(PORT, () => {
 		console.log("[*] Server run", PORT)
 	})
 
