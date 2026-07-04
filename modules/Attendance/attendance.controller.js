@@ -1,6 +1,6 @@
 const attendanceModel = require("./attendance.model");
 const { getId } = require('../../helper/getIdFromToken');
-const userModel = require("../user/user.model");
+const userModel = require("../User/user.model");
 const { default: mongoose } = require("mongoose");
 
 

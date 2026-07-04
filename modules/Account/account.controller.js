@@ -1,5 +1,5 @@
 const accountModel = require("./account.model");
-const userModel = require("../user/user.model");
+const userModel = require("../User/user.model");
 const { getId } = require("../../helper/getIdFromToken");
 const paymentOutModel = require("../paymentOut/paymentOut.model");
 const paymentInModel = require("../paymentIn/paymentIn.model");

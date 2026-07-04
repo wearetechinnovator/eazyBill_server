@@ -1,6 +1,6 @@
 const { getId } = require("../../helper/getIdFromToken");
 const categoryModel = require("./itemCategory.model");
-const userModel = require("../user/user.model");
+const userModel = require("../User/user.model");
 
 
 class ItemCategoryController {
