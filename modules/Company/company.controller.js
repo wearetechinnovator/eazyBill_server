@@ -2,7 +2,7 @@ const { getId } = require("../../helper/getIdFromToken");
 const removeFile = require("../../helper/removeFile");
 const { saveBase64Image } = require("../../helper/uploader");
 const companyModel = require("./company.model");
-const userModel = require("../user/user.model");
+const userModel = require("../User/user.model");
 const path = require("path");
 
 
