@@ -2,8 +2,8 @@
 // const userModel = require("../models/user.model");
 // const { getId } = require("./getIdFromToken");
 
-// const partyModel = require("../modules/Party/partyLog.model");
-// const userModel = require("../modules/User/user.model");
+const partyModel = require("../modules/Party/partyLog.model");
+const userModel = require("../modules/User/user.model");
 const { getId } = require("./getIdFromToken");
 
 

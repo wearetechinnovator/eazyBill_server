@@ -1,10 +1,10 @@
+const { default: mongoose } = require("mongoose");
 const accountModel = require("./account.model");
 const userModel = require("../User/user.model");
 const { getId } = require("../../helper/getIdFromToken");
 const paymentOutModel = require("../PaymentOut/paymentOut.model");
 const paymentInModel = require("../PaymentIn/paymentIn.model");
 const transactionModel = require("../OtherTransaction/otherTransaction.model");
-const { default: mongoose } = require("mongoose");
 
 
 class AccountController {

@@ -148,8 +148,6 @@ class ItemController {
         }
 
         try {
-            console.log(itemArr);
-
             const VALID_FIELDS = [
                 'Item Name', 'Item Type', 'Category', 'Sale Price', 'Sale Tax Type', 'Purchase Price',
                 'Purchase Tax Type', 'GST Tax (%)', 'HSN/SAC', 'Unit', 'Opening Stock'
@@ -219,7 +217,7 @@ class ItemController {
                 obj.title = i['Item Name'];
                 obj.type = i['Item Type'].toLowerCase();
                 obj.hsn = i['HSN/SAC'].toString();
-                obj.tax = itemTaxData._id.toString();
+                obj.tax = itemTaxData?._id.toString();
                 obj.salePrice = i['Sale Price'].toString();
                 obj.saleTaxType = i['Sale Tax Type']?.toString().trim().toLowerCase() === 'with tax'
                     ? '1' : i['Sale Tax Type']?.toString().trim().toLowerCase() === 'without tax'
