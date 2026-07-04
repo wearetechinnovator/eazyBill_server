@@ -1,7 +1,7 @@
 const { default: mongoose } = require('mongoose');
 const { getId } = require('../../helper/getIdFromToken');
 const partyModel = require('./party.model');
-const PartyLog = require('./partylog.model');
+const PartyLog = require('./partyLog.model');
 const salesinvoiceModel = require('../Sales/sales.model');
 const purchaseInvoiceModel = require('../Purchase/purchase.model');
 const userModel = require('../User/user.model');
