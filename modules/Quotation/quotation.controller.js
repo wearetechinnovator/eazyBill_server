@@ -12,7 +12,7 @@ class QuotationController {
         const {
             token, party, quotationNumber, estimateDate, validDate, items, discountType, discountAmount,
             discountPercentage, additionalCharge, note, terms, update, id, billStatus, finalAmount, accountId,
-            autoRoundOff, roundOffAmount, roundOffType, enqNumber, deliveryTime
+            autoRoundOff, roundOffAmount, roundOffType, enqNumber
         } = req.body;
 
 
@@ -56,7 +56,7 @@ class QuotationController {
                     $set: {
                         party, quotationNumber, estimateDate, validDate, items, billStatus,
                         discountType, discountAmount, discountPercentage, additionalCharge, note, terms,
-                        accountId: accountId || null, autoRoundOff, roundOffAmount, roundOffType, enqNumber, deliveryTime
+                        accountId: accountId || null, autoRoundOff, roundOffAmount, roundOffType, enqNumber,
                     }
                 })
 
@@ -82,7 +82,7 @@ class QuotationController {
                 userId: getUserData._id, companyId: getUserData.activeCompany,
                 party, quotationNumber, estimateDate, validDate, items, billStatus,
                 discountType, discountAmount, discountPercentage, additionalCharge, note, terms,
-                accountId, autoRoundOff, roundOffAmount, roundOffType, enqNumber, deliveryTime
+                accountId, autoRoundOff, roundOffAmount, roundOffType, enqNumber
             });
 
             if (!insert) {

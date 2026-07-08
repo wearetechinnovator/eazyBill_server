@@ -69,7 +69,6 @@ const proformaSchema = new mongoose.Schema({
     default: null
   },
   poNumber: String,
-  deliveryTime: String,
   items: [itemSchema],
   discountType: String,
   discountAmount: Number,

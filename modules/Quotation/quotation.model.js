@@ -54,7 +54,6 @@ const quotationSchema = new mongoose.Schema({
   note: String,
   terms: String,
   enqNumber:String,
-  deliveryTime: String,
   isDel: {
     type: Boolean,
     default: false

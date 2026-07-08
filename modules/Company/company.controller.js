@@ -17,8 +17,7 @@ class CompanyController {
         } = req.body;
 
 
-        if ([token, name, phone, email, gst, pan,
-            address, country, state].some((field) => !field || field == "")) {
+        if ([token, name, phone, email, address, country, state].some((field) => !field || field == "")) {
             return res.json({ err: 'require fields are empty', update: false });
         }
 
