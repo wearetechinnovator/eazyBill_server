@@ -44,7 +44,7 @@ class StaffPaymentController {
                 })
 
                 // ::Update Expenses::
-                if (paymentType !== this.LOAN && paymentType !== this.LOAN_RECEIVED) {
+                if (paymentType !== StaffPaymentController.LOAN && paymentType !== StaffPaymentController.LOAN_RECEIVED) {
                     // Get Transactionid
                     const staffPayment = await staffPaymentModel.findOne({ _id: id });
 
@@ -73,17 +73,17 @@ class StaffPaymentController {
              */
             let getExpCategory;
             let addTransaction;
-            if (paymentType !== this.LOAN && paymentType !== this.LOAN_RECEIVED) {
+            if (paymentType !== StaffPaymentController.LOAN && paymentType !== StaffPaymentController.LOAN_RECEIVED) {
 
                 getExpCategory = await transactionCategoryModal.findOne({
                     userId: getUserData._id, companyId: getUserData.activeCompany,
-                    categoryName: this.STAFF_SALARY_TRANSACTION_CATEGORY
+                    categoryName: StaffPaymentController.STAFF_SALARY_TRANSACTION_CATEGORY
                 })
 
                 if (!getExpCategory) {
                     getExpCategory = await transactionCategoryModal.create({
                         userId: getUserData._id, companyId: getUserData.activeCompany,
-                        categoryName: this.STAFF_SALARY_TRANSACTION_CATEGORY
+                        categoryName: StaffPaymentController.STAFF_SALARY_TRANSACTION_CATEGORY
                     })
                 }
 
@@ -95,7 +95,7 @@ class StaffPaymentController {
                 // Expanses Create
                 addTransaction = await transactionModel.create({
                     userId: getUserData._id, companyId: getUserData.activeCompany,
-                    transactionType: this.EXPENSE, transactionNumber: Number(transaction?.transactionNumber || 0) + 1,
+                    transactionType: StaffPaymentController.EXPENSE, transactionNumber: Number(transaction?.transactionNumber || 0) + 1,
                     transactionDate: paymentDate, paymentMode: paymentMode,
                     account: paymentAccount, amount: paymentAmount, note: paymentRemark,
                     category: getExpCategory._id
@@ -106,7 +106,7 @@ class StaffPaymentController {
 
             //=================[Monthly Payment Insert]===============
             // If PaymentType is `salary` then staffMonthlySalary data;
-            if (paymentType === this.SALARY) {
+            if (paymentType === StaffPaymentController.SALARY) {
                 let status; // 1=`Full Paid` | 2=`Partial Paid`
                 if (paymentAmount < totalSalary)
                     status = "2";
@@ -133,7 +133,7 @@ class StaffPaymentController {
             });
 
             if (!insert) {
-                if (paymentType !== this.LOAN && paymentType !== this.LOAN_RECEIVED)
+                if (paymentType !== StaffPaymentController.LOAN && paymentType !== StaffPaymentController.LOAN_RECEIVED)
                     await transactionModel.deleteOne({ _id: addTransaction?._id });
 
                 return res.status(500).json({ err: 'Staff Payment failed', create: false });
@@ -169,12 +169,12 @@ class StaffPaymentController {
                 }
             }
             if (paymentType) {
-                if (paymentType !== this.LOAN)
+                if (paymentType !== StaffPaymentController.LOAN)
                     filter.paymentType = paymentType;
                 else
                     filter.$or = [
-                        { paymentType: this.LOAN },
-                        { paymentType: this.LOAN_RECEIVED }
+                        { paymentType: StaffPaymentController.LOAN },
+                        { paymentType: StaffPaymentController.LOAN_RECEIVED }
                     ];
             }
 
@@ -232,7 +232,7 @@ class StaffPaymentController {
             const staffPayment = await staffPaymentModel.findOne({ _id: ids[0] });
 
             // Update Transaction
-            if (staffPayment.paymentType !== this.LOAN && staffPayment.paymentType !== this.LOAN_RECEIVED) {
+            if (staffPayment.paymentType !== StaffPaymentController.LOAN && staffPayment.paymentType !== StaffPaymentController.LOAN_RECEIVED) {
                 await transactionModel.updateOne({ _id: staffPayment.transactionId }, {
                     $set: {
                         isDel: true
@@ -269,7 +269,7 @@ class StaffPaymentController {
                 {
                     $match: {
                         userId: getUser._id, companyId: getUser.activeCompany,
-                        paymentType: this.LOAN
+                        paymentType: StaffPaymentController.LOAN
                     }
                 },
                 {
@@ -284,7 +284,7 @@ class StaffPaymentController {
                 {
                     $match: {
                         userId: getUser._id, companyId: getUser.activeCompany,
-                        paymentType: this.LOAN_RECEIVED
+                        paymentType: StaffPaymentController.LOAN_RECEIVED
                     }
                 },
                 {
