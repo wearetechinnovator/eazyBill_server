@@ -54,7 +54,7 @@ class PurchaseReturnController {
                     partyId: party,
                     voucher: 'purchase_return',
                     voucherId: id,
-                    date: invoiceDate,
+                    date: returnDate,
                     debit: (finalAmount - (paymentAmount || 0)).toFixed(2)
                 })
 
